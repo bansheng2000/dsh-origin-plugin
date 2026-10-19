@@ -136,7 +136,8 @@ TOOL_CATALOG = [
     {"name": "origin_mask_points", "group": "数据编辑", "desc": "屏蔽指定数据点（NaN 化隐藏错误点，可逆）"},
     {"name": "origin_add_line", "group": "细粒度编辑", "desc": "画辅助线（vertical/horizontal/slope，Tafel 外推/阈值线）"},
     {"name": "origin_labtalk", "group": "连接与诊断", "desc": "任意 LabTalk 执行（逃生舱；带激活+读回+NaN 防护+破坏命令门禁 confirm）"},
-    {"name": "origin_release", "group": "连接与诊断", "desc": "释放自动化连接（Origin 保持打开交给用户手动操作；下次调用自动重连）"},
+    {"name": "origin_release", "group": "连接与诊断", "desc": "释放自动化连接（Origin 保持打开交给用户手动操作；下次调用自动重连；顺带显示窗口）"},
+    {"name": "origin_reveal", "group": "连接与诊断", "desc": "显示 Origin 窗口（任务收尾把后台实例交回用户；不杀进程、不改功能）"},
     {"name": "origin_reconnect", "group": "连接与诊断", "desc": "显式重连 Origin（release 后恢复自动化）"},
     # edit
     {"name": "origin_filter_data", "group": "数据编辑", "desc": "删除/裁剪数据点（写回原工作表）"},
@@ -379,6 +380,18 @@ def origin_release() -> dict:
     下次任意 origin_* 工具调用会自动重连，无需先调 reconnect。
     """
     return engine.release()
+
+
+@mcp.tool()
+def origin_reveal() -> dict:
+    """把 Origin 窗口显示出来（任务收尾用；不杀进程、不改任何功能）。
+
+    背景：COM 拉起的 Origin 默认隐藏（@VIS=0），任务结束后用户只看到一个
+    "后台残留进程"，无法直接操作。本工具显示**同一实例**的窗口，用户可直接
+    查看、保存或关闭；需要交还控制权用 origin_release（它也会自动显示）。
+    返回 visible_after（@VIS 读回）为 true 表示确实显示了。
+    """
+    return engine.reveal(force=True)
 
 
 @mcp.tool()
@@ -1890,6 +1903,18 @@ def _sync_stdio_server():
     import inspect
     registry = _build_tool_registry()
     tool_fns = {name: globals()[name] for name in registry if callable(globals().get(name))}
+
+    # #26 退出兜底：服务器进程结束（会话结束/重载）时，若还连着 Origin 就把窗口
+    # 显示出来——否则用户看到的只是一个看不见的 Origin64 残留进程。
+    import atexit
+
+    def _reveal_on_exit():
+        try:
+            engine.reveal(force=True)
+        except Exception:
+            pass
+
+    atexit.register(_reveal_on_exit)
 
     for raw in sys.stdin:
         line = raw.strip()

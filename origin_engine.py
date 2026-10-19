@@ -593,6 +593,55 @@ def _origin_proc_count():
         return None
 
 
+def _origin_show_state():
+    """读回 Origin 窗口当前是否显示（LabTalk @VIS>0）。未连接时返回 None。"""
+    if not _connected or _origin_app is None:
+        return None
+    try:
+        return bool(_origin_app.get_show())
+    except Exception:
+        return None
+
+
+_reveal_at = 0.0
+
+
+def _reveal_origin(force=False, throttle_seconds=5.0):
+    """把自动化拉起的 Origin 窗口显示出来（不杀进程、不改功能）。
+
+    背景（#26）：COM 拉起的 Origin 默认 @VIS=0，窗口不可见 —— 任务结束后用户
+    只看到一个"后台残留进程"，无法直接查看/保存/关闭，还会挡住下次多开。这里
+    调 originpro.set_show(True)（即 LabTalk @VIS=100）把**同一实例**的窗口显示
+    出来交给用户。
+
+    - force=True 绕过节流（收尾/退出时用）；
+    - throttle_seconds：同一次任务多处收尾时不反复显示；
+    - 只在**已连接**时动作，绝不为了显示而新起一个 Origin 实例。
+    """
+    global _reveal_at
+    if not _connected or _origin_app is None:
+        return {"ok": True, "revealed": False, "skipped": True,
+                "reason": "not_connected"}
+    now = time.time()
+    if not force and (now - _reveal_at) < float(throttle_seconds):
+        return {"ok": True, "revealed": False, "skipped": True,
+                "reason": "throttled", "age_s": round(now - _reveal_at, 1)}
+    before = _origin_show_state()
+    try:
+        _origin_app.set_show(True)
+    except Exception as e:
+        return {"ok": False, "revealed": False, "error_code": "reveal_failed",
+                "error": f"{type(e).__name__}: {e}",
+                "hint": "可改用 origin_labtalk 执行 @VIS=100 后读回 @VIS"}
+    after = _origin_show_state()
+    _reveal_at = now
+    return {"ok": True, "revealed": bool(after), "visible_before": before,
+            "visible_after": after,
+            "detail": ("Origin 窗口已显示（@VIS>0），可直接查看/保存/关闭"
+                       if after else
+                       "已请求显示但读回仍为隐藏；窗口可能仍在初始化")}
+
+
 def _autokill_enabled():
     """连接前自动清理残留 Origin 进程的开关（DSH_ORIGIN_AUTOKILL）。
 
@@ -2998,6 +3047,7 @@ def _help_impl():
             "origin_diagnose": "系统级自检：Origin 安装/COM 注册/残留进程/导出目录权限（连接失败先调它）",
             "origin_cookbook": "场景→工具组合速查：常见调用链 + 推荐默认参数 + 快速/正式路径",
             "origin_release": "释放自动化连接（Origin 保持打开交给用户手动操作；下次调用自动重连）",
+            "origin_reveal": "显示 Origin 窗口（任务收尾把后台实例交回用户；不杀进程、不改功能）",
             "origin_reconnect": "显式重连 Origin（release 后恢复；已连接时幂等）",
             "origin_manage_plots": "数据图管理：remove 删曲线 / change_data 换数据源",
             "origin_manage_data": "工作表数据管理：sort 按列排序整表 / transpose 行列转置（新表）",
@@ -3996,9 +4046,13 @@ def _export_delivery_impl(graph, source_path=None, output_dir=None, fmts="png,pd
             except Exception as _rt:
                 issues.append(f"报告 txt 写入失败: {_rt}")
                 report_txt = None
+        # #26 收尾显示：一键交付是任务的"最后一步出图"，交付完把 Origin 窗口显示
+        # 出来，避免任务结束后只剩一个看不见的 Origin64 后台进程挡住下次多开。
+        reveal = _reveal_origin()
         return oerr.ok(
             delivery_dir=ddir, files=files, opju=opju, issues=issues,
             data_csv=data_csv, report_txt=report_txt,
+            origin_revealed=reveal,
             all_ok=(not issues),
             detail=(f"交付目录 {ddir}（图片 {n_ok}/{len(files)} + "
                     f"{'OPJU' if opju else '无 OPJU'}"
@@ -5120,12 +5174,14 @@ def _release_impl():
     新线程重连会原生崩溃 EXIT=127）；下次任意工具调用在同一线程重连（Attach）。
     """
     global _connected, _origin_app
+    reveal = _reveal_origin(force=True)   # #26：释放即显示，不留看不见的后台窗口
     origin_still_running = _origin_running()
     _connected = False
     _origin_app = None
     return {"ok": True, "released": True,
             "origin_still_running": origin_still_running,
-            "detail": "已释放自动化连接；Origin 窗口保持打开，可手动操作。"
+            "origin_revealed": reveal,
+            "detail": "已释放自动化连接；Origin 窗口已显示并保持打开，可手动操作。"
                       "下次任意工具调用将自动重连。"}
 
 
@@ -5146,8 +5202,14 @@ def status():
 
 @_synchronized
 def release():
-    """P0-3：释放自动化连接（Origin 保持打开，交给用户手动操作）。"""
+    """P0-3：释放自动化连接（Origin 保持打开，交给用户手动操作；顺带显示窗口）。"""
     return _release_impl()
+
+
+@_synchronized
+def reveal(force=True):
+    """#26：显示 Origin 窗口（把自动化实例交回用户；不杀进程、不改功能）。"""
+    return _reveal_origin(force=force)
 
 
 @_synchronized
