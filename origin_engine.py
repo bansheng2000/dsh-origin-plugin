@@ -3942,6 +3942,57 @@ def _save_project_impl(path):
         return oerr.from_exception(e, trace=traceback.format_exc(limit=3))
 
 
+def _new_project_impl(path=None, save_current=True):
+    """开一个新的 Origin 工程（每会话一个工程，别在一个工程里一直堆）。
+
+    - save_current=True 时先把当前项目另存为 .opju（有页面才存），避免丢东西；
+      path 为空则自动存到导出目录 session_<时间戳>.opju。
+    - 保存后执行 LabTalk doc -n（新工程）；必须先保存，未保存直接 doc -n
+      会弹「是否保存」模态框把 COM 卡死 60s。
+    """
+    try:
+        ok, conn = _connect_impl()
+        if not ok:
+            return conn
+        op = _origin_app
+        saved = None
+        if save_current:
+            has_pages = True
+            try:
+                pg = _list_pages_impl()
+                has_pages = bool(pg.get("pages")) if isinstance(pg, dict) else True
+            except Exception:
+                has_pages = True
+            if has_pages:
+                target = path
+                if not target:
+                    import datetime as _dt
+                    stamp = _dt.datetime.now().strftime("%Y%m%d_%H%M%S")
+                    target = os.path.join(DEFAULT_OUTPUT_DIR, "session_%s.opju" % stamp)
+                res = _save_project_impl(target)
+                if isinstance(res, dict) and res.get("ok"):
+                    saved = {"file": res.get("file"), "size": res.get("size")}
+                else:
+                    return res if isinstance(res, dict) else oerr.fail(
+                        "export_error", "新工程前保存旧工程失败，已中止（避免丢数据）",
+                        save_result=res)
+        op.po.LT_execute("doc -n")
+        cnt = None
+        try:
+            pl = _list_pages_impl()
+            cnt = len(pl.get("pages") or []) if isinstance(pl, dict) else None
+        except Exception:
+            cnt = None
+        return oerr.ok(saved_previous=saved, pages_after=cnt,
+                       detail=("已新建 Origin 工程"
+                               + ("（上一个工程已存到 %s）" % saved["file"] if saved else "")
+                               + "。画图前请确认 origin_list_pages 只剩空工作簿"),
+                       next_action="用 origin_write_data / origin_load_file 建本会话数据，"
+                                   "收尾 origin_save_project 存本会话专属 .opju")
+    except Exception as e:
+        return oerr.from_exception(e, trace=traceback.format_exc(limit=3))
+
+
 def _export_delivery_impl(graph, source_path=None, output_dir=None, fmts="png,pdf",
                           width=1200, save_opju=True, report_text=None,
                           export_data_csv=True):
@@ -5662,6 +5713,11 @@ def load_file(path, worksheet=None, sheet=None, max_preview_rows=5):
 @_synchronized
 def save_project(path):
     return _save_project_impl(path)
+
+
+@_synchronized
+def new_project(path=None, save_current=True):
+    return _new_project_impl(path=path, save_current=save_current)
 
 
 @_synchronized

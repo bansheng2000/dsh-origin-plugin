@@ -120,6 +120,7 @@ TOOL_CATALOG = [
     {"name": "origin_apply_style", "group": "画图", "desc": "对已有图应用排版/调色板/多序列区分（显式样式逐项回报）"},
     {"name": "origin_export", "group": "画图", "desc": "导出 PNG/SVG/PDF/TIF/EMF 文件"},
     {"name": "origin_save_project", "group": "交付与验证", "desc": "保存当前项目为可编辑 OPJU"},
+    {"name": "origin_new_project", "group": "连接与诊断", "desc": "新建空工程（先存旧工程，每会话一个）"},
     {"name": "origin_export_delivery", "group": "交付与验证", "desc": "一键交付：源文件同级建目录收纳图片+OPJU 并核验"},
     # 细粒度编辑
     {"name": "origin_list_pages", "group": "细粒度编辑", "desc": "列出全部页面（图页/工作簿）+ 活动窗口"},
@@ -990,6 +991,24 @@ def origin_verify_graph(graph: str = "", expected_x_title: str = "",
                                expected_series=expected_series,
                                legend_visible=legend_visible, files=files,
                                allow_full_overlap=allow_full_overlap)
+
+
+@mcp.tool()
+def origin_new_project(path: str = "", save_current: bool = True) -> dict:
+    """开一个新的 Origin 工程（每会话一个工程，别在一个工程里一直堆页面）。
+
+    新会话开工前先调这个：把上一个工程存成 .opju，再 doc -n 新建空工程，
+    之后本会话的数据/图都落在新工程里，收尾 origin_save_project 存本会话专属 opju。
+
+    Args:
+        path: 上一个工程保存到哪（含 .opju）；留空自动存到 ~/dsch_origin_plugin/output/session_<时间戳>.opju。
+        save_current: 默认 True；False 表示直接丢弃当前工程（有东西没存就别这么干）。
+    Returns:
+        {"ok": true, "saved_previous": {"file","size"} | null, "pages_after": N, ...}
+    注意：当前工程有未保存修改时**先保存再新建**是必须的——直接 doc -n 会弹
+    「是否保存」模态框，把后续 COM 调用全部卡到 60s 超时。
+    """
+    return engine.new_project(path=path or None, save_current=save_current)
 
 
 @mcp.tool()

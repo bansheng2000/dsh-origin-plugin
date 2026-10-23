@@ -1,5 +1,17 @@
 # Changelog
 
+## 2.7.5 (2026-10-23) — origin_new_project：每会话一个工程
+
+**新增工具 `origin_new_project(path="", save_current=true)`（第 76 个）。**
+
+起因：多个会话共用一个 Origin 工程，页面越堆越多（`list_pages` 变慢、交付物互相污染）。
+
+- 先 `op.save(path)` 存当前工程（path 留空 → `~/dsch_origin_plugin/output/session_<时间戳>.opju`），
+  再 `LT_execute("doc -n")` 新建空工程，返回 `saved_previous` 与 `pages_after`。
+- **必须先保存**：未保存直接 `doc -n` 会弹「是否保存」模态框，把后续 COM 调用全部 60s 超时（实测）。
+- 保存失败即中止新建（不丢用户工程）。
+- 实测：`pages_after=1`（只剩空 Book1），旧工程 25010 B 落盘。
+
 ## 2.7.4 (2026-10-23) — origin_edit_plot 原生填充/渐变
 
 **新增填充通道，不再需要让模型手写 LabTalk。**
