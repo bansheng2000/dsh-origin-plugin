@@ -1072,11 +1072,18 @@ def origin_edit_plot(graph: str, edits: list) -> dict:
              "symbol_size": 8,
              "symbol_interior": 0实心|1空心,
              "transparency": 0~100,
-             "visible": true/false}
+             "visible": true/false,
+             "fill_mode": "none"|"solid"|"gradient"（缺省 gradient，配合下面三项才生效）,
+             "fill_top_color": "#RRGGBB"（渐变起始色=峰顶/柱顶）,
+             "fill_bottom_color": "#RRGGBB"（渐变终止色=底部；填 #FFFFFF 得到"褪白到背景"效果）,
+             "fill_to": "axis"（填到轴下限）|"next"|数值,
+             "fill_to_value": 数值（填到指定 y）}
     Returns:
         {"ok": true, "changes": [{item, requested, status, readback}], ...}
         status=applied 表示写入并读回一致；applied_unverified 表示通道写入成功但
-        该属性无读回（如线宽），需用 origin_view_graph 目视确认；rejected 附原因。
+        该属性无读回（如线宽、填充渐变），需用 origin_view_graph 目视确认；rejected 附原因。
+        注意：填充下边界恒为轴下限（fill_to="next" 也不改），偏移基线/堆叠谱要叠白遮罩截断；
+        设完渐变必须另起一次调用导出（同批设色+导出会毒化 COM 会话）。
     """
     return engine.edit_plot(graph, edits)
 

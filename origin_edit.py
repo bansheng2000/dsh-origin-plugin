@@ -486,6 +486,48 @@ def edit_plot(op, po, graph, edits):
                 ok = back is not None and abs(float(back) - t) < 1e-6
                 rec(f"{label}.transparency", t, "applied" if ok else "rejected",
                     readback=back)
+        # 填充 / 渐变（LabTalk set 选项通道；实测 2026-10-23）
+        if any(k in spec for k in ("fill_mode", "fill_top_color", "fill_bottom_color",
+                                  "fill_to", "fill_to_value")):
+            try:
+                mode = str(spec.get("fill_mode", "gradient")).lower()
+                opts = []
+                if mode in ("none", "off", "0"):
+                    opts.append("-pf 0")
+                else:
+                    opts.append("-pf 1")
+                    if mode == "solid":
+                        opts.append("-pfm 0")
+                    else:
+                        opts.append("-pfm 3")
+                top = spec.get("fill_top_color")
+                bot = spec.get("fill_bottom_color")
+                if top is not None:
+                    rr, gg, bb = parse_color(top)
+                    opts.append(f"-pfb color({rr},{gg},{bb})")
+                if bot is not None:
+                    rr, gg, bb = parse_color(bot)
+                    opts.append(f"-pff color({rr},{gg},{bb})")
+                to = spec.get("fill_to")
+                if to is not None:
+                    tv = str(to).lower()
+                    if tv in ("axis", "baseline", "0"):
+                        opts.append("-pfv 0")
+                    elif tv in ("next", "9"):
+                        opts.append("-pfv 9")
+                    else:
+                        opts.append(f"-pfv {float(spec.get('fill_to_value', tv))}")
+                elif spec.get("fill_to_value") is not None:
+                    opts.append(f"-pfv {float(spec['fill_to_value'])}")
+                err = _safe(p.set_cmd, *opts)[1]
+                rec(f"{label}.fill", " ".join(opts),
+                    "applied_unverified" if err is None else "rejected",
+                    note=("经 LabTalk set 通道写入；pfm/pfb/pff 无可靠读回，"
+                          "必须导出后取像素确认（峰中心取竖列，颜色应连续变化）"
+                          if err is None else str(err)[:120]))
+            except Exception as e:  # noqa: BLE001
+                rec(f"{label}.fill", spec.get("fill_mode"), "rejected",
+                    note=str(e)[:120])
         if "visible" in spec:
             want = 1 if spec["visible"] else 0
             # 探针证实：p.show 是属性（不可调用），可靠通道是 set_int('show', 0/1)

@@ -1,5 +1,18 @@
 # Changelog
 
+## 2.7.4 (2026-10-23) — origin_edit_plot 原生填充/渐变
+
+**新增填充通道，不再需要让模型手写 LabTalk。**
+
+- `origin_edit_plot` 的 edit 项新增 4 个字段：`fill_mode`（none/solid/gradient）、
+  `fill_top_color`、`fill_bottom_color`、`fill_to`（axis/next/数值）+ `fill_to_value`。
+  内部走 `<plot>.set_cmd("-pf 1","-pfm 3","-pfb color(r,g,b)","-pff color(r,g,b)","-pfv 0")`。
+- 返回 status=`applied_unverified`：pfm/pfb/pff 无可靠读回，必须在导出后取像素确认
+  （峰中心取竖列，颜色应随 y 连续变化才算真渐变）。
+- 已实测（2026-10-23，Origin 2026b）：`fill_top_color:"#DE90BA"` + `fill_bottom_color:"#FFFFFF"`
+  → 导出竖列取样 (241,215,228) → (255,254,255) 连续过渡，判真渐变；填充下边界恒为轴下限。
+- 纪律不变：设色与导出**必须分两次工具调用**，同一批设渐变再导出会毒化 COM 会话。
+
 ## 2.7.3 (2026-09-18) — 热修（P0）
 
 **修复 issue #1：装了插件后 DSH 完全无法启动（`TypeError: Invalid effect`）。**
